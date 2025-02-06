@@ -11,6 +11,9 @@ import json
 import logging
 import threading
 from drift_detection import detect_drift
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -28,6 +31,23 @@ app = FastAPI(
     description="This API makes 7 day conversion_count forecasting using Prophet model.",
     version="1.0.0"
 )
+
+# Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Too many requests, please try again later."}
+    )
+
+# Global Rate Limit
+@app.middleware("http")
+async def rate_limiter_middleware(request: Request, call_next):
+    response = await limiter.limit("50/minute")(call_next)(request)
+    return response
 
 # Load data
 def load_data(filepath: str) -> pd.DataFrame:
@@ -96,7 +116,7 @@ def train_model(df: pd.DataFrame) -> Prophet:
 global model  
 model: Prophet = train_model(df)
 
-# Model Performans Metriği Hesaplama
+# Metric calculation
 def calculate_metrics(df: pd.DataFrame, model: Prophet) -> Dict[str, float]:
     """Calculates MAPE and RMSE."""
     df = df.rename(columns={"date": "ds", "conversion_count": "y"})  # Turns them into Prophet format
@@ -144,7 +164,8 @@ def set_cached_prediction(redis_client, input_data, result, expire_time=300):
 
 # API Endpoint
 @app.post("/predict", response_model=PredictionResponse)
-def predict(data: PredictionInput, redis_client=Depends(get_redis)) -> PredictionResponse:
+@limiter.limit("10/minute")
+def predict(request: Request, data: PredictionInput, redis_client=Depends(get_redis)) -> PredictionResponse:
     logger.info(f"New prediction request is taken. Days: {data.days}")
 
     input_data = {"days": data.days}
@@ -203,8 +224,10 @@ def retrain_model():
     model = train_model(df)  # Train new model
     logger.info("New model added to the system!")
 
+
 @router.post("/drift-check")
-def check_model_drift(data: DriftCheckInput, background_tasks: BackgroundTasks):
+@limiter.limit("5/minute")
+def check_model_drift(request: Request ,data: DriftCheckInput, background_tasks: BackgroundTasks):
     """
     Checks if there is a drift.
     If there is a drift, it adds a task to retrain it.
