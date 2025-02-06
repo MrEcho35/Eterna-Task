@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, APIRouter, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, APIRouter, BackgroundTasks, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 import pandas as pd
@@ -6,6 +6,8 @@ import numpy as np
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 from typing import List, Dict
+import redis
+import json
 import logging
 import threading
 from drift_detection import detect_drift
@@ -44,7 +46,7 @@ df: pd.DataFrame = load_data('data.json')
 
 # Feature Engineering
 def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
-    """Özellik mühendisliği işlemlerini uygular."""
+    """Makes feature engineering."""
     df['year'] = df['date'].dt.year
     df['month'] = df['date'].dt.month
     df['weekday'] = df['date'].dt.weekday
@@ -125,14 +127,34 @@ class DriftCheckInput(BaseModel):
     days: int = Field(30, gt=0, description="How many days of data will be used to check drift? Default: 30")
     threshold: float = Field(0.2, gt=0, description="Drift detection threshold. Default: 0.2")
 
+
+def get_redis():
+    return redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+def get_cached_prediction(redis_client, input_data):
+    key = f"prediction:{json.dumps(input_data, sort_keys=True)}"
+    cached_value = redis_client.get(key)
+    if cached_value:
+        return json.loads(cached_value)
+    return None
+
+def set_cached_prediction(redis_client, input_data, result, expire_time=300):
+    key = f"prediction:{json.dumps(input_data, sort_keys=True)}"
+    redis_client.set(key, json.dumps(result), ex=expire_time)
+
 # API Endpoint
 @app.post("/predict", response_model=PredictionResponse)
-def predict(data: PredictionInput) -> PredictionResponse:
-
+def predict(data: PredictionInput, redis_client=Depends(get_redis)) -> PredictionResponse:
     logger.info(f"New prediction request is taken. Days: {data.days}")
-    
+
+    input_data = {"days": data.days}
+    cached_result = get_cached_prediction(redis_client, input_data)
+    if cached_result:
+        logger.info("Returning cached prediction.")
+        return cached_result
+
     future: pd.DataFrame = model.make_future_dataframe(periods=data.days)
-    
+
     last_values = df.iloc[-1]
     future['click_count'] = last_values['click_count']
     future['month'] = last_values['month']
@@ -141,13 +163,11 @@ def predict(data: PredictionInput) -> PredictionResponse:
     future['dayofyear'] = last_values['dayofyear']
     future['is_weekend'] = last_values['is_weekend']
     future['is_holiday'] = last_values['is_holiday']
-    
+
     forecast: pd.DataFrame = model.predict(future)
     predictions: pd.DataFrame = forecast[['ds', 'yhat']].tail(data.days)
 
-    logger.info("Prediction complete.")
-
-    return PredictionResponse(
+    response = PredictionResponse(
         predictions=[
             PredictionOutput(date=str(row.ds.date()), conversion_prediction=float(row.yhat))
             for _, row in predictions.iterrows()
@@ -157,6 +177,12 @@ def predict(data: PredictionInput) -> PredictionResponse:
             "rmse": float(metrics["rmse"])
         }
     )
+
+    # Sonucu Redis cache'e ekle
+    set_cached_prediction(redis_client, input_data, response.dict())
+
+    logger.info("Prediction complete.")
+    return response
 
 # General Exception Handler
 @app.exception_handler(Exception)
