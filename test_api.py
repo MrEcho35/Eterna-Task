@@ -9,7 +9,7 @@ async def test_root():
         ) as ac:
         response = await ac.get("/")
     assert response.status_code == 200
-    assert "Conversion Prediction API'ye Hoş Geldiniz!" in response.text
+    assert "Welcome to Conversion Prediction API!" in response.text
 
 
 @pytest.mark.asyncio

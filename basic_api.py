@@ -21,13 +21,13 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Conversion Prediction API",
-    description="Bu API, Prophet modeli kullanarak 7 günlük conversion_count tahmini yapar.",
+    description="This API makes 7 day conversion_count forecasting using Prophet model.",
     version="1.0.0"
 )
 
 # Load data
 def load_data(filepath: str) -> pd.DataFrame:
-    """Veriyi JSON dosyasından yükler ve gerekli dönüşümleri yapar."""
+    """Loads data from JSON and makes the necessary groupby operation"""
     data = pd.read_json(filepath)
     df = pd.DataFrame(data)
     df = df.groupby('date').agg({
@@ -49,11 +49,11 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     df['dayofyear'] = df['date'].dt.dayofyear
     df["is_weekend"] = df["weekday"].isin([5, 6]).astype(int)
 
-    # Bayram ve resmi tatil günleri
+    # Turkish Holidays
     holidays: List[str] = ["2024-01-01", "2024-04-23", "2024-05-01", "2024-07-15", "2024-10-29"]
     df["is_holiday"] = df["date"].astype(str).isin(holidays).astype(int)
 
-    # Lag özellikleri
+    # Lags
     lags: List[int] = [3, 7, 15]
     for lag in lags:
         df[f"conversion_lag_{lag}"] = df["conversion_count"].shift(lag)
@@ -62,9 +62,9 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 
 df: pd.DataFrame = feature_engineering(df)
 
-# Prophet Modeli Eğitme
+# Prophet Model Training
 def train_model(df: pd.DataFrame) -> Prophet:
-    """Prophet modelini eğitir ve döndürür."""
+    """Trains and returns the Prophet Model."""
     df_prophet = df.rename(columns={"date": "ds", "conversion_count": "y"})
     model = Prophet()
     model.add_regressor('click_count')
@@ -83,11 +83,11 @@ model: Prophet = train_model(df)
 
 # Model Performans Metriği Hesaplama
 def calculate_metrics(df: pd.DataFrame, model: Prophet) -> Dict[str, float]:
-    """MAPE ve RMSE hesaplar."""
-    df = df.rename(columns={"date": "ds", "conversion_count": "y"})  # Prophet formatına dönüştür
+    """Calculates MAPE and RMSE."""
+    df = df.rename(columns={"date": "ds", "conversion_count": "y"})  # Turns them into Prophet format
     forecast = model.predict(df)
     train = df
-    test = df.tail(7)
+    test = df.tail(7) # Last 7 days are used for validation since future 7 days are meant to be predicted.
     actual_values = test['y']
     predicted_values = forecast['yhat'].tail(7)
     rmse: float = np.sqrt(mean_squared_error(actual_values, predicted_values))
@@ -96,9 +96,9 @@ def calculate_metrics(df: pd.DataFrame, model: Prophet) -> Dict[str, float]:
 
 metrics: Dict[str, float] = calculate_metrics(df, model)
 
-# Pydantic veri modelleri
+# Pydantic data modeling
 class PredictionInput(BaseModel):
-    days: int = Field(..., gt=0, description="Tahmin yapılacak gün sayısı. 1 veya daha büyük olmalı.")
+    days: int = Field(..., gt=0, description="Days to be predicted should be bigger than or equal to 1.")
 
 class PredictionOutput(BaseModel):
     date: str
@@ -112,7 +112,7 @@ class PredictionResponse(BaseModel):
 @app.post("/predict", response_model=PredictionResponse)
 def predict(data: PredictionInput) -> PredictionResponse:
 
-    logger.info(f"Yeni tahmin isteği alındı. Gün sayısı: {data.days}")
+    logger.info(f"New prediction request is taken. Days: {data.days}")
     
     future: pd.DataFrame = model.make_future_dataframe(periods=data.days)
     
@@ -128,7 +128,7 @@ def predict(data: PredictionInput) -> PredictionResponse:
     forecast: pd.DataFrame = model.predict(future)
     predictions: pd.DataFrame = forecast[['ds', 'yhat']].tail(data.days)
 
-    logger.info("Tahmin işlemi tamamlandı.")
+    logger.info("Prediction complete.")
 
     return PredictionResponse(
         predictions=[
@@ -141,16 +141,16 @@ def predict(data: PredictionInput) -> PredictionResponse:
         }
     )
 
-# Genel Hata Yönetimi
+# General Exception Handler
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error(f"Bir hata oluştu: {str(exc)}", exc_info=True)  
+    logger.error(f"An unexpected error occured: {str(exc)}", exc_info=True)  
     return JSONResponse(
         status_code=500,
         content={"error": f"An unexpected error occurred: {str(exc)}"}
     )
 
-# Ana Sayfa
+# Main Page
 @app.get("/", response_class=HTMLResponse)
 def read_root() -> str:
     return """
@@ -159,10 +159,10 @@ def read_root() -> str:
             <title>Conversion Prediction API</title>
         </head>
         <body style="font-family: Arial, sans-serif; text-align: center; margin: 50px;">
-            <h1>🚀 Conversion Prediction API'ye Hoş Geldiniz!</h1>
-            <p>Bu API, Prophet kullanarak conversion_count tahmini yapar.</p>
-            <p><a href='/docs'>📖 API Dokümantasyonu</a></p>
-            <p><a href='/redoc'>📘 ReDoc Dokümantasyonu</a></p>
+            <h1>🚀 Welcome to Conversion Prediction API!</h1>
+            <p>This API makes conversion_count forecasting using Prophet model.</p>
+            <p><a href='/docs'>📖 API Documentation</a></p>
+            <p><a href='/redoc'>📘 ReDoc Documentation</a></p>
         </body>
     </html>
     """
