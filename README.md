@@ -2,9 +2,17 @@
 
 This is the repository of the task given by Eterna Technology.
 
-TODO: 
+Done: 
 - Proper feature engineering
 - Time series forecasting
 - API design
+- Hyperparameter optimization
+- Unit Test
+- curl Test
+
+TODO:
+- Model Serving
+- Caching
+- Rate Limiting
 - API deployment
 
