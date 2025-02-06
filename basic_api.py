@@ -177,13 +177,16 @@ def retrain_model():
     model = train_model(df)  # Train new model
     logger.info("New model added to the system!")
 
-@router.get("/drift-check")
-def check_model_drift(background_tasks: BackgroundTasks):
+@router.post("/drift-check")
+def check_model_drift(data: DriftCheckInput, background_tasks: BackgroundTasks):
     """
     Checks if there is a drift.
     If there is a drift, it adds a task to retrain it.
     """
-    drift_results = detect_drift(df, model)
+    drift_results = detect_drift(df, model, data.days, data.threshold)
+    
+    if drift_results.get("error"):
+        return {"error": drift_results["error"]}
     
     if drift_results["drift_detected"]:
         background_tasks.add_task(retrain_model)  # Retrain model in the background

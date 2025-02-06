@@ -33,6 +33,6 @@ def detect_drift(df: pd.DataFrame, model: Prophet, days: int, threshold: float) 
     mape = mean_absolute_percentage_error(actual_values, predicted_values)
 
     # Drift detection
-    drift_detected = rmse > threshold * rmse or mape > threshold * mape
+    drift_detected = bool(rmse > threshold * rmse or mape > threshold * mape)
 
     return {"drift_detected": drift_detected, "rmse": rmse, "mape": mape}
