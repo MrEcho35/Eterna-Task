@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, APIRouter, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 import pandas as pd
@@ -7,6 +7,8 @@ from prophet import Prophet
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 from typing import List, Dict
 import logging
+import threading
+from drift_detection import detect_drift
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -66,7 +68,18 @@ df: pd.DataFrame = feature_engineering(df)
 def train_model(df: pd.DataFrame) -> Prophet:
     """Trains and returns the Prophet Model."""
     df_prophet = df.rename(columns={"date": "ds", "conversion_count": "y"})
-    model = Prophet()
+    best_params = {'changepoint_prior_scale': 0.01,
+                    'growth': 'linear',
+                    'holidays_prior_scale': 1,
+                    'seasonality_mode': 'additive',
+                    'seasonality_prior_scale': 10}
+    
+    model = Prophet(changepoint_prior_scale=best_params['changepoint_prior_scale'],
+                    seasonality_prior_scale=best_params['seasonality_prior_scale'],
+                    holidays_prior_scale=best_params['holidays_prior_scale'],
+                    seasonality_mode=best_params['seasonality_mode'],
+                    growth=best_params['growth']
+                    ) # Optimized parameters
     model.add_regressor('click_count')
     model.add_regressor('month')
     model.add_regressor('impression_count')
@@ -78,7 +91,7 @@ def train_model(df: pd.DataFrame) -> Prophet:
     model.fit(df_prophet)
     logger.info("Prophet modeli eğitildi.")
     return model
-
+global model  
 model: Prophet = train_model(df)
 
 # Model Performans Metriği Hesaplama
@@ -107,6 +120,10 @@ class PredictionOutput(BaseModel):
 class PredictionResponse(BaseModel):
     predictions: List[PredictionOutput]
     model_metrics: Dict[str, float]
+
+class DriftCheckInput(BaseModel):
+    days: int = Field(30, gt=0, description="How many days of data will be used to check drift? Default: 30")
+    threshold: float = Field(0.2, gt=0, description="Drift detection threshold. Default: 0.2")
 
 # API Endpoint
 @app.post("/predict", response_model=PredictionResponse)
@@ -149,6 +166,39 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         status_code=500,
         content={"error": f"An unexpected error occurred: {str(exc)}"}
     )
+
+router = APIRouter()
+
+
+def retrain_model():
+    """Modeli yeniden eğitir ve günceller."""
+    global model  # Güncellenen modeli tüm sistemde kullanmak için
+    logger.info("Model retraining...")
+    model = train_model(df)  # Train new model
+    logger.info("New model added to the system!")
+
+@router.get("/drift-check")
+def check_model_drift(background_tasks: BackgroundTasks):
+    """
+    Checks if there is a drift.
+    If there is a drift, it adds a task to retrain it.
+    """
+    drift_results = detect_drift(df, model)
+    
+    if drift_results["drift_detected"]:
+        background_tasks.add_task(retrain_model)  # Retrain model in the background
+    
+    return drift_results
+
+@router.post("/update-model")
+def update_model():
+    """
+    Adds model manually to the system and retrains it.
+    """
+    threading.Thread(target=retrain_model).start()
+    return {"message": "Model retraining begin."}
+
+app.include_router(router)
 
 # Main Page
 @app.get("/", response_class=HTMLResponse)
