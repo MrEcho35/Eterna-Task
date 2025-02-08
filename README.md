@@ -6,7 +6,6 @@ This API leverages the Prophet model to forecast conversion counts.
 - Time-series forecasting using Prophet.
 - FastAPI-based REST API for easy integration.
 - Redis caching for faster predictions.
-- Highly customizable and easy to deploy.
 
 ## Overview
 
