@@ -1,0 +1,17 @@
+- THESE ARE THE API TESTS WITH CURL. COMMANDS BELOW WORK ON POWERSHELL.
+
+
+1.Test root:
+curl.exe -X 'GET' 'http://127.0.0.1:8000/' -H 'accept: text/html' 
+
+2.Test desired prediction:
+curl.exe -X POST "http://127.0.0.1:8000/predict" -H "accept: application/json" -H "Content-Type: application/json" -d '{\"days\": 7}'
+
+3.Test with invalid day entry:
+curl.exe -X POST "http://127.0.0.1:8000/predict" -H "accept: application/json" -H "Content-Type: application/json" -d '{\"days\": -5}'
+
+4.Test with large day entry:
+curl.exe -X POST "http://127.0.0.1:8000/predict" -H "accept: application/json" -H "Content-Type: application/json" -d '{\"days\": 365}'
+
+5.Test invalid endpoint:
+curl.exe -X 'GET' 'http://127.0.0.1:8000/invalid-endpoint'

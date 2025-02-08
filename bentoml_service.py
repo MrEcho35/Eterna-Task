@@ -14,7 +14,7 @@ svc = bentoml.Service("conversion_service", runners=[model_runner])
 async def predict(data: dict):
     df = pd.DataFrame(data)
     forecast = model_runner.predict.run(df)
-    return forecast.to_dict(orient="records")
+
 
 # In order to run
 # bentoml serve bentoml_service:svc --port 3000

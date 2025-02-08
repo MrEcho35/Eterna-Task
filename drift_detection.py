@@ -3,6 +3,7 @@ import pandas as pd
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 
+
 def detect_drift(df: pd.DataFrame, model: Prophet, days: int, threshold: float) -> dict:
     """
     Detects if there is a model drift or not.
@@ -11,13 +12,13 @@ def detect_drift(df: pd.DataFrame, model: Prophet, days: int, threshold: float) 
     - `threshold`: By what percentage does RMSE or MAPE increase, drift will be detected?
     """
     
-    df = df.rename(columns={"date": "ds", "conversion_count": "y"})  # Prophet formatına çevir
+    df = df.rename(columns={"date": "ds", "conversion_count": "y"})  # Convert to Prophet format
     
-    # Eğer yeterli veri yoksa hata döndür
+    # Return error if not enough data
     if len(df) < days:
         return {"error": f"Not enough data! At least {days} amount of data is required."}
     
-    # Take last 'days' amount of data
+    # Take the last 'days' amount of data
     train = df[:-days]
     test = df[-days:]
 
@@ -35,4 +36,9 @@ def detect_drift(df: pd.DataFrame, model: Prophet, days: int, threshold: float) 
     # Drift detection
     drift_detected = bool(rmse > threshold * rmse or mape > threshold * mape)
 
-    return {"drift_detected": drift_detected, "rmse": rmse, "mape": mape}
+    return {
+        "drift_detected": drift_detected,
+        "rmse": rmse,
+        "mape": mape,
+        "days": days  
+    }

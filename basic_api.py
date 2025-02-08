@@ -232,7 +232,7 @@ def predict(request: Request, data: PredictionInput, redis_client=Depends(get_re
         }
     )
 
-    # Sonucu Redis cache'e ekle
+    # Cache it to Redis
     set_cached_prediction(redis_client, input_data, response.dict())
 
     logger.info("Prediction complete.")
