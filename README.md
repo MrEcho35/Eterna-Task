@@ -17,8 +17,8 @@ This Conversion Prediction API provides accurate and efficient forecasting. Main
 To run this API, you'll need the following:
 
 - **Python 3.8+**: Make sure you have Python 3.8 or above installed.
-- **FastAPI**: A modern web framework for building APIs.
-- **Prophet**: A tool for forecasting time-series data.
+- **FastAPI**: A modern web framework for building APIs. [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- **Prophet**: A tool for forecasting time-series data. [Prophet Documentation](https://facebook.github.io/prophet/docs/quick_start.html)
 - **Redis**: Required for caching. In order to program to work Redis Server and Redis CLI must be running in the background. You can install Redis using the following link: [Redis for Windows](https://github.com/microsoftarchive/redis/releases).
 
 ## Installation Steps
